@@ -1,0 +1,257 @@
+// This file contains API tests for the Social Media API
+// You can use this with REST Client extension in VS Code
+// Save as 'api-tests.http' and use the REST Client extension to run tests
+
+////////////////
+// Environment (update with your deployment URL when ready)
+@baseUrl = http://localhost:5000/api
+@authToken = {{login.response.body.token}}
+
+////////////////
+// Authentication Tests
+###
+// @name register
+// Test user registration
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "testuser{{$timestamp}}",
+  "email": "testuser{{$timestamp}}@example.com",
+  "password": "password123"
+}
+
+###
+// Test registration validation - should fail with short password
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "failuser",
+  "email": "failuser@example.com",
+  "password": "123"
+}
+
+###
+// @name login
+// Test user login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "funbimd@example.com",
+  "password": "funbimd"
+}
+
+###
+// Test login validation - should fail with invalid email
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "notvalidemail",
+  "password": "password123"
+}
+
+###
+// Test get current user
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{authToken}}
+
+////////////////
+// Posts Tests
+###
+// @name createPost
+// Test creating a post
+POST {{baseUrl}}/posts
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "text": "This is a test post {{$timestamp}}",
+  "image": "https://picsum.photos/200/300"
+}
+
+###
+// Test post validation - should fail with too long text
+POST {{baseUrl}}/posts
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "text": "grhfuhrgbwejuyhwjeiruyhwjuyhrbwenjuyhrwh",
+  "image": "https://picsum.photos/200/300"
+}
+
+###
+// Test getting all posts
+GET {{baseUrl}}/posts
+Authorization: Bearer {{authToken}}
+
+###
+// Test getting feed posts with pagination
+GET {{baseUrl}}/posts/feed?page=1&limit=5
+Authorization: Bearer {{authToken}}
+
+###
+// Test getting explore posts with pagination
+GET {{baseUrl}}/posts/explore?page=1&limit=5
+Authorization: Bearer {{authToken}}
+
+###
+// @name getSinglePost
+// Test getting a single post
+GET {{baseUrl}}/posts/{{createPost.response.body.data._id}}
+Authorization: Bearer {{authToken}}
+
+###
+// Test updating a post
+PUT {{baseUrl}}/posts/{{createPost.response.body.data._id}}
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "text": "This post has been updated {{$timestamp}}"
+}
+
+###
+// Test liking a post
+PUT {{baseUrl}}/posts/{{createPost.response.body.data._id}}/like
+Authorization: Bearer {{authToken}}
+
+###
+// @name commentOnPost
+// Test commenting on a post
+POST {{baseUrl}}/posts/{{createPost.response.body.data._id}}/comments
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "text": "This is a test comment {{$timestamp}}"
+}
+
+###
+// Test comment validation - should fail with too long text
+POST {{baseUrl}}/posts/{{createPost.response.body.data._id}}/comments
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "text": "{{$randomString 301}}"
+}
+
+###
+// Test deleting a comment
+DELETE {{baseUrl}}/posts/{{createPost.response.body.data._id}}/comments/{{commentOnPost.response.body.data[0]._id}}
+Authorization: Bearer {{authToken}}
+
+////////////////
+// Profile Tests
+###
+// @name createAnotherUser
+// Create another user to test follow functionality
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "username": "fred{{$timestamp}}",
+  "email": "fred{{$timestamp}}@example.com",
+  "password": "freddy"
+}
+
+###
+// @name loginAnotherUser
+// Login as the other user
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "funbimd@example.com",
+  "password": "funbimd"
+}
+
+
+###
+@otherUserToken = {{loginAnotherUser.response.body.token}}
+@otherUserId = {{loginAnotherUser.response.body.data.id}}
+
+###
+// Test getting user profile
+GET {{baseUrl}}/profiles/{{otherUserId}}
+Authorization: Bearer {{authToken}}
+
+###
+// Test following a user
+PUT {{baseUrl}}/profiles/{{otherUserId}}/follow
+Authorization: Bearer {{authToken}}
+
+###
+// Test getting user posts
+GET {{baseUrl}}/profiles/{{otherUserId}}/posts
+Authorization: Bearer {{authToken}}
+
+###
+// Test getting user followers
+GET {{baseUrl}}/profiles/{{otherUserId}}/followers
+Authorization: Bearer {{authToken}}
+
+###
+// Test getting user following
+GET {{baseUrl}}/profiles/{{otherUserId}}/following
+Authorization: Bearer {{authToken}}
+
+////////////////
+// Search Tests
+###
+// Test searching for users with pagination
+GET {{baseUrl}}/search/users?username=test&page=1&limit=5
+Authorization: Bearer {{authToken}}
+
+###
+// Test searching for posts with pagination
+GET {{baseUrl}}/search/posts?keywords=test&page=1&limit=5
+Authorization: Bearer {{authToken}}
+
+###
+// Test searching for posts with additional filters
+GET {{baseUrl}}/search/posts?keywords=test&hasMedia=true&sortBy=likes&sortOrder=desc
+Authorization: Bearer {{authToken}}
+
+###
+// Test getting trending topics
+GET {{baseUrl}}/search/trending
+Authorization: Bearer {{authToken}}
+
+////////////////
+// Error Handling Tests
+###
+// Test 404 route not found
+GET {{baseUrl}}/nonexistentroute
+Authorization: Bearer {{authToken}}
+
+###
+// Test invalid ObjectId format
+GET {{baseUrl}}/posts/invalidid
+Authorization: Bearer {{authToken}}
+
+###
+// Test unauthorized access (invalid token)
+GET {{baseUrl}}/posts
+Authorization: Bearer invalidtoken123
+
+////////////////
+// Validation Tests
+###
+// Test pagination validation - should fail with negative page
+GET {{baseUrl}}/posts/feed?page=-1&limit=5
+Authorization: Bearer {{authToken}}
+
+###
+// Test pagination validation - should fail with too large limit
+GET {{baseUrl}}/posts/feed?page=1&limit=101
+Authorization: Bearer {{authToken}}
+
+###
+// Test deleting a post
+DELETE {{baseUrl}}/posts/{{createPost.response.body.data._id}}
+Authorization: Bearer {{authToken}}
