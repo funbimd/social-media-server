@@ -3,6 +3,7 @@ const User = require("../models/User");
 const Post = require("../models/Post");
 const { getPaginationInfo } = require("../utils/pagination");
 const ErrorResponse = require("../utils/errorResponse");
+const { pool } = require("../config/db");
 
 // @desc    Search for users
 // @route   GET /api/search/users
@@ -15,34 +16,65 @@ exports.searchUsers = async (req, res, next) => {
       return next(new ErrorResponse("Please provide a search term", 400));
     }
 
-    // Build the query
-    const query = {
-      username: { $regex: username, $options: "i" },
-    };
+    // Build the SQL query
+    const countQuery = `
+      SELECT COUNT(*) FROM users 
+      WHERE username ILIKE $1
+    `;
 
-    // Count total users matching the query
-    const total = await User.countDocuments(query);
+    // Get the total count
+    const countResult = await pool.query(countQuery, [`%${username}%`]);
+    const total = parseInt(countResult.rows[0].count);
 
     // Get pagination info
     const { pagination, startIndex, limit } = getPaginationInfo(req, total);
 
-    // Define sort options
-    const sort = {};
-    sort[sortBy] = sortOrder === "desc" ? -1 : 1;
+    // Define sort direction
+    const direction = sortOrder === "desc" ? "DESC" : "ASC";
 
     // Execute the query with pagination and sorting
-    const users = await User.find(query)
-      .select("username profilePicture bio followers following")
-      .sort(sort)
-      .skip(startIndex)
-      .limit(limit);
+    const usersQuery = `
+      SELECT id, username, profile_picture as "profilePicture", bio 
+      FROM users
+      WHERE username ILIKE $1
+      ORDER BY ${sortBy} ${direction}
+      LIMIT $2 OFFSET $3
+    `;
+
+    const usersResult = await pool.query(usersQuery, [
+      `%${username}%`,
+      limit,
+      startIndex,
+    ]);
+
+    // Get users with follow status
+    const users = usersResult.rows;
+
+    // Check if the current user is following each returned user
+    const followStatusQuery = `
+      SELECT following_id FROM followers
+      WHERE follower_id = $1 AND following_id = ANY($2::uuid[])
+    `;
+
+    // Extract user IDs to check
+    const userIds = users.map((user) => user.id);
+
+    // Only run this query if we have users to check
+    let followingIds = [];
+    if (userIds.length > 0) {
+      const followStatusResult = await pool.query(followStatusQuery, [
+        req.user.id,
+        userIds,
+      ]);
+
+      followingIds = followStatusResult.rows.map((row) => row.following_id);
+    }
 
     // Add following status for each user
     const usersWithFollowStatus = users.map((user) => {
-      const isFollowing = req.user.following.includes(user._id);
       return {
-        ...user.toObject(),
-        isFollowing,
+        ...user,
+        isFollowing: followingIds.includes(user.id),
       };
     });
 
@@ -65,56 +97,112 @@ exports.searchPosts = async (req, res, next) => {
       keywords,
       userId,
       hasMedia,
-      sortBy = "createdAt",
+      sortBy = "created_at",
       sortOrder = "desc",
     } = req.query;
 
-    // Build the query
-    const query = {};
+    // Build the SQL query conditions
+    let conditions = [];
+    let params = [];
+    let paramIndex = 1;
 
     // Search by keywords if provided
     if (keywords) {
-      query.text = { $regex: keywords, $options: "i" };
+      conditions.push(`text ILIKE $${paramIndex}`);
+      params.push(`%${keywords}%`);
+      paramIndex++;
     }
 
     // Filter by user if provided
     if (userId) {
-      query.user = userId;
+      conditions.push(`user_id = $${paramIndex}`);
+      params.push(userId);
+      paramIndex++;
     }
 
     // Filter by posts with media if requested
     if (hasMedia === "true") {
-      query.image = { $exists: true, $ne: null };
+      conditions.push("image IS NOT NULL");
     }
 
+    // Build the WHERE clause
+    const whereClause =
+      conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
+
     // Count total posts matching the query
-    const total = await Post.countDocuments(query);
+    const countQuery = `
+      SELECT COUNT(*) FROM posts ${whereClause}
+    `;
+
+    const countResult = await pool.query(countQuery, params);
+    const total = parseInt(countResult.rows[0].count);
 
     // Get pagination info
     const { pagination, startIndex, limit } = getPaginationInfo(req, total);
 
-    // Define sort options
-    const sort = {};
-
-    // Allow sorting by likes count or date
+    // Determine sort field and direction
+    let sortField = sortBy;
     if (sortBy === "likes") {
-      sort["likes.length"] = sortOrder === "desc" ? -1 : 1;
-    } else {
-      sort[sortBy] = sortOrder === "desc" ? -1 : 1;
+      sortField = "(SELECT COUNT(*) FROM post_likes WHERE post_id = posts.id)";
     }
+    const direction = sortOrder === "desc" ? "DESC" : "ASC";
 
     // Execute the query with pagination and sorting
-    const posts = await Post.find(query)
-      .populate("user", "username profilePicture")
-      .populate("comments.user", "username profilePicture")
-      .sort(sort)
-      .skip(startIndex)
-      .limit(limit);
+    const postsQuery = `
+      SELECT p.*, 
+             u.username, u.profile_picture as "profilePicture",
+             (SELECT COUNT(*) FROM post_likes WHERE post_id = p.id) as "likesCount"
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      ${whereClause}
+      ORDER BY ${sortField} ${direction}
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+
+    params.push(limit, startIndex);
+    const postsResult = await pool.query(postsQuery, params);
+
+    // Get the posts
+    const posts = postsResult.rows;
+
+    // Get comments for each post
+    const postIds = posts.map((post) => post.id);
+
+    let comments = [];
+    if (postIds.length > 0) {
+      const commentsQuery = `
+        SELECT c.*, u.username, u.profile_picture as "profilePicture"
+        FROM comments c
+        JOIN users u ON c.user_id = u.id
+        WHERE c.post_id = ANY($1::uuid[])
+        ORDER BY c.created_at
+      `;
+
+      const commentsResult = await pool.query(commentsQuery, [postIds]);
+      comments = commentsResult.rows;
+    }
+
+    // Organize comments by post
+    const postComments = {};
+    comments.forEach((comment) => {
+      if (!postComments[comment.post_id]) {
+        postComments[comment.post_id] = [];
+      }
+      postComments[comment.post_id].push(comment);
+    });
+
+    // Add comments to each post
+    const postsWithComments = posts.map((post) => {
+      return {
+        ...post,
+        comments: postComments[post.id] || [],
+      };
+    });
 
     res.status(200).json({
       success: true,
       pagination,
-      data: posts,
+      data: postsWithComments,
     });
   } catch (err) {
     next(err);
@@ -126,19 +214,24 @@ exports.searchPosts = async (req, res, next) => {
 // @access  Private
 exports.getTrendingTopics = async (req, res, next) => {
   try {
-    // This is a simplified implementation
-    // A more complex version would use text analysis or aggregation
-
-    // Get recent posts (last 24 hours)
+    // Get posts from the last 24 hours
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-    const recentPosts = await Post.find({
-      createdAt: { $gte: oneDayAgo },
-    }).select("text likes");
+    const query = `
+      SELECT p.text, COUNT(pl.id) as like_count
+      FROM posts p
+      LEFT JOIN post_likes pl ON p.id = pl.post_id
+      WHERE p.created_at >= $1
+      GROUP BY p.id
+      ORDER BY like_count DESC
+      LIMIT 100
+    `;
+
+    const result = await pool.query(query, [oneDayAgo]);
+    const recentPosts = result.rows;
 
     // Simple trend detection based on likes count and keywords
-    // In a real implementation, you might use more sophisticated text analysis
     const keywords = {};
 
     recentPosts.forEach((post) => {
@@ -146,7 +239,7 @@ exports.getTrendingTopics = async (req, res, next) => {
       const words = post.text.toLowerCase().match(/\b\w+\b/g) || [];
 
       // Count occurrences weighted by likes
-      const weight = post.likes.length + 1; // +1 to count the post itself
+      const weight = parseInt(post.like_count) + 1; // +1 to count the post itself
 
       words.forEach((word) => {
         // Filter out common words and short words

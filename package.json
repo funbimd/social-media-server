@@ -20,6 +20,8 @@
     "fs": "^0.0.1-security",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.13.2"
+    "mongoose": "^8.13.2",
+    "pg": "^8.15.1",
+    "yargs": "^17.7.2"
   }
 }

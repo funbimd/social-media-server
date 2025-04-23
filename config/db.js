@@ -1,19 +1,29 @@
-const mongoose = require("mongoose");
+// config/db.js
+const { Pool } = require("pg");
+const dotenv = require("dotenv");
 
+dotenv.config();
+
+// Create a new PostgreSQL connection pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl:
+    process.env.NODE_ENV === "production"
+      ? { rejectUnauthorized: false }
+      : false,
+});
+
+// Test the connection
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGO_URI, {
-      serverSelectionTimeoutMS: 30000,
-      socketTimeoutMS: 30000,
-      connectTimeoutMS: 30000,
-    });
-
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-    return conn;
+    const client = await pool.connect();
+    console.log(`PostgreSQL Connected: ${client.connectionParameters.host}`);
+    client.release();
+    return pool;
   } catch (error) {
     console.error(`Error: ${error.message}`);
     throw error;
   }
 };
 
-module.exports = connectDB;
+module.exports = { connectDB, pool };

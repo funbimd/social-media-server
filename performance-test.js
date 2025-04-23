@@ -331,7 +331,3 @@ module.exports = {
   testFeeds,
   generateReport,
 };
-// Note: This script is designed to be run in a Node.js environment.
-// Ensure you have the necessary dependencies installed:
-// npm install axios fs
-// Adjust the BASE_URL to match your API's base URL.

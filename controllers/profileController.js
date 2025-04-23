@@ -1,239 +1,352 @@
-const User = require("../models/User");
+// controllers/profileController.js
+const { pool } = require("../config/db");
+const ErrorResponse = require("../utils/errorResponse");
 
 // @desc    Get user profile
 // @route   GET /api/profiles/:id
 // @access  Private
-exports.getUserProfile = async (req, res) => {
+exports.getUserProfile = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id)
-      .select("-password")
-      .populate("followers", "username profilePicture")
-      .populate("following", "username profilePicture");
+    // Get basic user info
+    const userQuery = `
+      SELECT id, username, email, profile_picture as "profilePicture", bio, created_at as "createdAt"
+      FROM users
+      WHERE id = $1
+    `;
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
+    const userResult = await pool.query(userQuery, [req.params.id]);
+
+    if (userResult.rows.length === 0) {
+      return next(new ErrorResponse("User not found", 404));
     }
+
+    const user = userResult.rows[0];
+
+    // Get followers
+    const followersQuery = `
+      SELECT u.id, u.username, u.profile_picture as "profilePicture", u.bio
+      FROM followers f
+      JOIN users u ON f.follower_id = u.id
+      WHERE f.following_id = $1
+    `;
+
+    const followersResult = await pool.query(followersQuery, [req.params.id]);
+    user.followers = followersResult.rows;
+
+    // Get following
+    const followingQuery = `
+      SELECT u.id, u.username, u.profile_picture as "profilePicture", u.bio
+      FROM followers f
+      JOIN users u ON f.following_id = u.id
+      WHERE f.follower_id = $1
+    `;
+
+    const followingResult = await pool.query(followingQuery, [req.params.id]);
+    user.following = followingResult.rows;
 
     res.status(200).json({
       success: true,
       data: user,
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message,
-    });
+    next(err);
   }
 };
 
 // @desc    Follow/Unfollow a user
 // @route   PUT /api/profiles/:id/follow
 // @access  Private
-exports.followUser = async (req, res) => {
+exports.followUser = async (req, res, next) => {
   try {
     // Make sure user can't follow themselves
     if (req.params.id === req.user.id) {
-      return res.status(400).json({
-        success: false,
-        error: "You cannot follow yourself",
-      });
+      return next(new ErrorResponse("You cannot follow yourself", 400));
     }
 
-    const userToFollow = await User.findById(req.params.id);
-    const currentUser = await User.findById(req.user.id);
+    // Check if target user exists
+    const userQuery = "SELECT * FROM users WHERE id = $1";
+    const userResult = await pool.query(userQuery, [req.params.id]);
 
-    if (!userToFollow) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
+    if (userResult.rows.length === 0) {
+      return next(new ErrorResponse("User not found", 404));
     }
 
     // Check if already following
-    const isFollowing = currentUser.following.some(
-      (user) => user.toString() === req.params.id
-    );
+    const followCheckQuery = `
+      SELECT * FROM followers
+      WHERE follower_id = $1 AND following_id = $2
+    `;
+
+    const followCheckResult = await pool.query(followCheckQuery, [
+      req.user.id,
+      req.params.id,
+    ]);
+
+    const isFollowing = followCheckResult.rows.length > 0;
 
     if (isFollowing) {
-      // Unfollow: Remove user from following list
-      currentUser.following = currentUser.following.filter(
-        (user) => user.toString() !== req.params.id
+      // Unfollow
+      await pool.query(
+        "DELETE FROM followers WHERE follower_id = $1 AND following_id = $2",
+        [req.user.id, req.params.id]
       );
-
-      // Remove current user from target user's followers list
-      userToFollow.followers = userToFollow.followers.filter(
-        (user) => user.toString() !== req.user.id
-      );
-
-      await currentUser.save();
-      await userToFollow.save();
 
       return res.status(200).json({
         success: true,
         data: { following: false },
       });
+    } else {
+      // Follow
+      await pool.query(
+        "INSERT INTO followers (follower_id, following_id) VALUES ($1, $2)",
+        [req.user.id, req.params.id]
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: { following: true },
+      });
     }
-
-    // Follow: Add user to following list
-    currentUser.following.push(req.params.id);
-    userToFollow.followers.push(req.user.id);
-
-    await currentUser.save();
-    await userToFollow.save();
-
-    res.status(200).json({
-      success: true,
-      data: { following: true },
-    });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message,
-    });
+    next(err);
   }
 };
 
 // @desc    Get user posts
 // @route   GET /api/profiles/:id/posts
 // @access  Private
-exports.getUserPosts = async (req, res) => {
+exports.getUserPosts = async (req, res, next) => {
   try {
-    const posts = await Post.find({ user: req.params.id })
-      .sort({ createdAt: -1 })
-      .populate("user", "username profilePicture")
-      .populate("comments.user", "username profilePicture");
+    // Pagination
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const startIndex = (page - 1) * limit;
+
+    // Get total count
+    const countQuery = "SELECT COUNT(*) FROM posts WHERE user_id = $1";
+    const countResult = await pool.query(countQuery, [req.params.id]);
+    const total = parseInt(countResult.rows[0].count);
+
+    // Get posts
+    const postsQuery = `
+      SELECT p.*, 
+        u.username, 
+        u.profile_picture as "profilePicture",
+        (SELECT COUNT(*) FROM post_likes WHERE post_id = p.id) as "likesCount"
+      FROM posts p
+      JOIN users u ON p.user_id = u.id
+      WHERE p.user_id = $1
+      ORDER BY p.created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    const postsResult = await pool.query(postsQuery, [
+      req.params.id,
+      limit,
+      startIndex,
+    ]);
+    const posts = postsResult.rows;
+
+    // Get comments
+    const postIds = posts.map((post) => post.id);
+    let comments = [];
+
+    if (postIds.length > 0) {
+      const commentsQuery = `
+        SELECT c.*, 
+          u.username, 
+          u.profile_picture as "profilePicture"
+        FROM comments c
+        JOIN users u ON c.user_id = u.id
+        WHERE c.post_id = ANY($1::uuid[])
+        ORDER BY c.created_at
+      `;
+
+      const commentsResult = await pool.query(commentsQuery, [postIds]);
+      comments = commentsResult.rows;
+    }
+
+    // Assign comments to posts
+    const postsWithComments = posts.map((post) => {
+      const postComments = comments.filter(
+        (comment) => comment.post_id === post.id
+      );
+      return {
+        ...post,
+        comments: postComments,
+      };
+    });
 
     res.status(200).json({
       success: true,
       count: posts.length,
-      data: posts,
+      pagination: {
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        limit,
+      },
+      data: postsWithComments,
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message,
-    });
+    next(err);
   }
 };
 
 // @desc    Get user followers list
 // @route   GET /api/profiles/:id/followers
 // @access  Private
-exports.getUserFollowers = async (req, res) => {
+exports.getUserFollowers = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id).populate(
-      "followers",
-      "username profilePicture bio"
-    );
+    // Pagination
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const startIndex = (page - 1) * limit;
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
+    // Get total count
+    const countQuery = "SELECT COUNT(*) FROM followers WHERE following_id = $1";
+    const countResult = await pool.query(countQuery, [req.params.id]);
+    const total = parseInt(countResult.rows[0].count);
+
+    // Get followers with pagination
+    const followersQuery = `
+      SELECT u.id, u.username, u.profile_picture as "profilePicture", u.bio
+      FROM followers f
+      JOIN users u ON f.follower_id = u.id
+      WHERE f.following_id = $1
+      ORDER BY u.username
+      LIMIT $2 OFFSET $3
+    `;
+
+    const followersResult = await pool.query(followersQuery, [
+      req.params.id,
+      limit,
+      startIndex,
+    ]);
 
     res.status(200).json({
       success: true,
-      count: user.followers.length,
-      data: user.followers,
+      count: followersResult.rows.length,
+      pagination: {
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        limit,
+      },
+      data: followersResult.rows,
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message,
-    });
+    next(err);
   }
 };
 
 // @desc    Get user following list
 // @route   GET /api/profiles/:id/following
 // @access  Private
-exports.getUserFollowing = async (req, res) => {
+exports.getUserFollowing = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id).populate(
-      "following",
-      "username profilePicture bio"
-    );
+    // Pagination
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const startIndex = (page - 1) * limit;
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-    }
+    // Get total count
+    const countQuery = "SELECT COUNT(*) FROM followers WHERE follower_id = $1";
+    const countResult = await pool.query(countQuery, [req.params.id]);
+    const total = parseInt(countResult.rows[0].count);
+
+    // Get following with pagination
+    const followingQuery = `
+      SELECT u.id, u.username, u.profile_picture as "profilePicture", u.bio
+      FROM followers f
+      JOIN users u ON f.following_id = u.id
+      WHERE f.follower_id = $1
+      ORDER BY u.username
+      LIMIT $2 OFFSET $3
+    `;
+
+    const followingResult = await pool.query(followingQuery, [
+      req.params.id,
+      limit,
+      startIndex,
+    ]);
 
     res.status(200).json({
       success: true,
-      count: user.following.length,
-      data: user.following,
+      count: followingResult.rows.length,
+      pagination: {
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        limit,
+      },
+      data: followingResult.rows,
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message,
-    });
+    next(err);
   }
 };
 
 // @desc    Search for users
 // @route   GET /api/profiles/search
 // @access  Private
-exports.searchUsers = async (req, res) => {
+exports.searchUsers = async (req, res, next) => {
   try {
     const { username } = req.query;
 
     if (!username) {
-      return res.status(400).json({
-        success: false,
-        error: "Please provide a username to search for",
-      });
+      return next(
+        new ErrorResponse("Please provide a username to search for", 400)
+      );
     }
 
     // Search for users with similar usernames
-    const users = await User.find({
-      username: { $regex: username, $options: "i" }, // Case-insensitive search
-    }).select("username profilePicture bio");
+    const usersQuery = `
+      SELECT id, username, profile_picture as "profilePicture", bio
+      FROM users
+      WHERE username ILIKE $1
+      ORDER BY username
+    `;
+
+    const usersResult = await pool.query(usersQuery, [`%${username}%`]);
 
     res.status(200).json({
       success: true,
-      count: users.length,
-      data: users,
+      count: usersResult.rows.length,
+      data: usersResult.rows,
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message,
-    });
+    next(err);
   }
 };
 
 // @desc    Get suggested users to follow (users not followed)
 // @route   GET /api/profiles/suggestions
 // @access  Private
-exports.getSuggestedUsers = async (req, res) => {
+exports.getSuggestedUsers = async (req, res, next) => {
   try {
     // Get users that the current user doesn't follow
-    const currentUser = await User.findById(req.user.id);
-    const following = [...currentUser.following, req.user.id]; // Include self
+    const suggestedUsersQuery = `
+      SELECT id, username, profile_picture as "profilePicture", bio
+      FROM users
+      WHERE id != $1
+      AND id NOT IN (
+        SELECT following_id FROM followers WHERE follower_id = $1
+      )
+      ORDER BY RANDOM()
+      LIMIT 5
+    `;
 
-    // Find users not followed, limit to 5
-    const users = await User.find({ _id: { $nin: following } })
-      .select("username profilePicture bio")
-      .limit(5);
+    const suggestedUsersResult = await pool.query(suggestedUsersQuery, [
+      req.user.id,
+    ]);
 
     res.status(200).json({
       success: true,
-      count: users.length,
-      data: users,
+      count: suggestedUsersResult.rows.length,
+      data: suggestedUsersResult.rows,
     });
   } catch (err) {
-    res.status(400).json({
-      success: false,
-      error: err.message,
-    });
+    next(err);
   }
 };

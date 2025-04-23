@@ -2,7 +2,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const helmet = require("helmet");
-const connectDB = require("./config/db");
+const { connectDB } = require("./config/db");
 const auth = require("./routes/auth");
 const posts = require("./routes/posts");
 const profiles = require("./routes/profiles");
@@ -61,9 +61,9 @@ app.use(errorHandler);
 
 // Connect to database
 connectDB()
-  .then(() => console.log("MongoDB connected successfully"))
+  .then(() => console.log("PostgreSQL connected successfully"))
   .catch((err) => {
-    console.error(`MongoDB connection error: ${err.message}`);
+    console.error(`PostgreSQL connection error: ${err.message}`);
     // Don't exit process in production, let the server still run
     if (process.env.NODE_ENV !== "production") {
       process.exit(1);
