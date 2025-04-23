@@ -242,9 +242,17 @@ exports.deletePost = async (req, res, next) => {
 // @access  Private
 exports.likePost = async (req, res, next) => {
   try {
+    const postId = req.params.id;
+    const userId = req.user?.id;
+
+    // Check for missing or invalid UUIDs
+    if (!postId || !userId) {
+      return next(new ErrorResponse("Invalid post ID or user ID", 400));
+    }
+
     // Check if post exists
     const postQuery = "SELECT * FROM posts WHERE id = $1";
-    const postResult = await pool.query(postQuery, [req.params.id]);
+    const postResult = await pool.query(postQuery, [postId]);
 
     if (postResult.rows.length === 0) {
       return next(new ErrorResponse("Post not found", 404));
@@ -255,24 +263,20 @@ exports.likePost = async (req, res, next) => {
       SELECT * FROM post_likes 
       WHERE post_id = $1 AND user_id = $2
     `;
-
-    const likeCheckResult = await pool.query(likeCheckQuery, [
-      req.params.id,
-      req.user.id,
-    ]);
+    const likeCheckResult = await pool.query(likeCheckQuery, [postId, userId]);
     const isLiked = likeCheckResult.rows.length > 0;
 
     if (isLiked) {
       // Unlike: Remove the like
       await pool.query(
         "DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2",
-        [req.params.id, req.user.id]
+        [postId, userId]
       );
     } else {
       // Like: Add a like
       await pool.query(
         "INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2)",
-        [req.params.id, req.user.id]
+        [postId, userId]
       );
     }
 
@@ -283,8 +287,7 @@ exports.likePost = async (req, res, next) => {
       JOIN users u ON pl.user_id = u.id
       WHERE pl.post_id = $1
     `;
-
-    const likesResult = await pool.query(likesQuery, [req.params.id]);
+    const likesResult = await pool.query(likesQuery, [postId]);
 
     res.status(200).json({
       success: true,

@@ -64,7 +64,7 @@ const createUsers = async () => {
 
       if (loginResult.success) {
         const token = loginResult.data.token;
-        const userId = loginResult.data.data ? loginResult.data.data._id : null;
+        const userId = loginResult.data.data ? loginResult.data.data.id : null;
         users.push({ username, email, password, token, userId });
       }
     }
@@ -95,7 +95,7 @@ const createPosts = async () => {
 
       if (postResult.success && postResult.data.data) {
         posts.push({
-          id: postResult.data.data._id,
+          id: postResult.data.data.id,
           userId: user.userId,
           userToken: user.token,
         });

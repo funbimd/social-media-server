@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-04-23T13:38:54.511Z",
+  "timestamp": "2025-04-23T14:13:58.328Z",
   "testConfig": {
     "users": 5,
     "postsPerUser": 10,
@@ -14,52 +14,52 @@
   },
   "responseTimeStats": {
     "registration": {
-      "min": 92,
-      "max": 237,
-      "avg": 122.4,
-      "median": 95
+      "min": 80,
+      "max": 180,
+      "avg": 106.4,
+      "median": 91
     },
     "login": {
-      "min": 87,
+      "min": 75,
       "max": 99,
-      "avg": 92.6,
-      "median": 92
+      "avg": 83.8,
+      "median": 82
     },
     "createPost": {
       "min": 5,
-      "max": 19,
-      "avg": 6.48,
-      "median": 6
+      "max": 10,
+      "avg": 5.68,
+      "median": 5
     },
     "getFeed": {
-      "min": 2,
-      "max": 4,
-      "avg": 3,
-      "median": 3
+      "min": 1,
+      "max": 3,
+      "avg": 1.8,
+      "median": 2
     },
     "getProfile": {
-      "min": 2,
-      "max": 3,
-      "avg": 2.4,
+      "min": 1,
+      "max": 2,
+      "avg": 1.6,
       "median": 2
     },
     "search": {
-      "min": 1,
-      "max": 3,
+      "min": 2,
+      "max": 2,
       "avg": 2,
       "median": 2
     },
     "like": {
       "min": 2,
-      "max": 185,
-      "avg": 79.58,
-      "median": 79
+      "max": 10,
+      "avg": 6.16,
+      "median": 7
     },
     "comment": {
       "min": 1,
-      "max": 6,
-      "avg": 2.8266666666666667,
-      "median": 3
+      "max": 4,
+      "avg": 2.1466666666666665,
+      "median": 2
     }
   }
 }
