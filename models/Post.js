@@ -1,8 +1,6 @@
-// models/Post.js
 const { pool } = require("../config/db");
 
 class Post {
-  // Create a new post
   static async create(postData) {
     try {
       const { text, image, user_id } = postData;
@@ -18,10 +16,8 @@ class Post {
     }
   }
 
-  // Find post by ID with user, comments and likes
   static async findById(id) {
     try {
-      // Get the post with user info
       const postResult = await pool.query(
         `
         SELECT p.*, u.username, u.profile_picture
@@ -36,7 +32,6 @@ class Post {
 
       const post = postResult.rows[0];
 
-      // Get comments with user info
       const commentsResult = await pool.query(
         `
         SELECT c.*, u.username, u.profile_picture
@@ -50,7 +45,6 @@ class Post {
 
       post.comments = commentsResult.rows;
 
-      // Get likes
       const likesResult = await pool.query(
         `
         SELECT u.id, u.username
@@ -69,12 +63,10 @@ class Post {
     }
   }
 
-  // Get feed posts (from followed users and self)
   static async getFeedPosts(userId, page = 1, limit = 10) {
     try {
       const offset = (page - 1) * limit;
 
-      // Get total count for pagination
       const countResult = await pool.query(
         `
         SELECT COUNT(*) as total
@@ -87,7 +79,6 @@ class Post {
 
       const total = parseInt(countResult.rows[0].total);
 
-      // Get posts with user, comments count and likes count
       const postsResult = await pool.query(
         `
         SELECT p.*, u.username, u.profile_picture,
@@ -118,12 +109,10 @@ class Post {
     }
   }
 
-  // Get explore posts (from users not followed)
   static async getExplorePosts(userId, page = 1, limit = 10) {
     try {
       const offset = (page - 1) * limit;
 
-      // Get total count for pagination
       const countResult = await pool.query(
         `
         SELECT COUNT(*) as total
@@ -136,7 +125,6 @@ class Post {
 
       const total = parseInt(countResult.rows[0].total);
 
-      // Get posts with user, comments count and likes count
       const postsResult = await pool.query(
         `
         SELECT p.*, u.username, u.profile_picture,
@@ -169,10 +157,8 @@ class Post {
     }
   }
 
-  // Toggle like on a post
   static async toggleLike(postId, userId) {
     try {
-      // Check if already liked
       const checkResult = await pool.query(
         "SELECT * FROM likes WHERE post_id = $1 AND user_id = $2",
         [postId, userId]
@@ -181,20 +167,17 @@ class Post {
       const isLiked = checkResult.rows.length > 0;
 
       if (isLiked) {
-        // Unlike
         await pool.query(
           "DELETE FROM likes WHERE post_id = $1 AND user_id = $2",
           [postId, userId]
         );
       } else {
-        // Like
         await pool.query(
           "INSERT INTO likes (post_id, user_id) VALUES ($1, $2)",
           [postId, userId]
         );
       }
 
-      // Get updated likes
       const likesResult = await pool.query(
         "SELECT user_id FROM likes WHERE post_id = $1",
         [postId]
@@ -206,16 +189,13 @@ class Post {
     }
   }
 
-  // Add comment to a post
   static async addComment(postId, userId, text) {
     try {
-      // Add comment
       const commentResult = await pool.query(
         "INSERT INTO comments (post_id, user_id, text) VALUES ($1, $2, $3) RETURNING *",
         [postId, userId, text]
       );
 
-      // Get user info for the comment
       const userResult = await pool.query(
         "SELECT username, profile_picture FROM users WHERE id = $1",
         [userId]
@@ -233,10 +213,8 @@ class Post {
     }
   }
 
-  // Delete comment from a post
   static async deleteComment(commentId, userId) {
     try {
-      // Check if comment exists and belongs to user
       const checkResult = await pool.query(
         "SELECT * FROM comments WHERE id = $1 AND user_id = $2",
         [commentId, userId]
@@ -246,7 +224,6 @@ class Post {
         return { error: "Comment not found or not authorized" };
       }
 
-      // Delete comment
       await pool.query("DELETE FROM comments WHERE id = $1", [commentId]);
 
       return { success: true };

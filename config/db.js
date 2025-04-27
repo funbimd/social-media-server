@@ -1,10 +1,8 @@
-// config/db.js
 const { Pool } = require("pg");
 const dotenv = require("dotenv");
 
 dotenv.config();
 
-// Create a new PostgreSQL connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl:
@@ -13,7 +11,6 @@ const pool = new Pool({
       : false,
 });
 
-// Test the connection
 const connectDB = async () => {
   try {
     const client = await pool.connect();

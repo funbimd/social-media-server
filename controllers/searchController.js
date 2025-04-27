@@ -1,4 +1,3 @@
-// controllers/searchController.js
 const User = require("../models/User");
 const Post = require("../models/Post");
 const { getPaginationInfo } = require("../utils/pagination");
@@ -16,23 +15,18 @@ exports.searchUsers = async (req, res, next) => {
       return next(new ErrorResponse("Please provide a search term", 400));
     }
 
-    // Build the SQL query
     const countQuery = `
       SELECT COUNT(*) FROM users 
       WHERE username ILIKE $1
     `;
 
-    // Get the total count
     const countResult = await pool.query(countQuery, [`%${username}%`]);
     const total = parseInt(countResult.rows[0].count);
 
-    // Get pagination info
     const { pagination, startIndex, limit } = getPaginationInfo(req, total);
 
-    // Define sort direction
     const direction = sortOrder === "desc" ? "DESC" : "ASC";
 
-    // Execute the query with pagination and sorting
     const usersQuery = `
       SELECT id, username, profile_picture as "profilePicture", bio 
       FROM users
@@ -47,19 +41,15 @@ exports.searchUsers = async (req, res, next) => {
       startIndex,
     ]);
 
-    // Get users with follow status
     const users = usersResult.rows;
 
-    // Check if the current user is following each returned user
     const followStatusQuery = `
       SELECT following_id FROM followers
       WHERE follower_id = $1 AND following_id = ANY($2::uuid[])
     `;
 
-    // Extract user IDs to check
     const userIds = users.map((user) => user.id);
 
-    // Only run this query if we have users to check
     let followingIds = [];
     if (userIds.length > 0) {
       const followStatusResult = await pool.query(followStatusQuery, [
@@ -70,7 +60,6 @@ exports.searchUsers = async (req, res, next) => {
       followingIds = followStatusResult.rows.map((row) => row.following_id);
     }
 
-    // Add following status for each user
     const usersWithFollowStatus = users.map((user) => {
       return {
         ...user,
@@ -101,35 +90,29 @@ exports.searchPosts = async (req, res, next) => {
       sortOrder = "desc",
     } = req.query;
 
-    // Build the SQL query conditions
     let conditions = [];
     let params = [];
     let paramIndex = 1;
 
-    // Search by keywords if provided
     if (keywords) {
       conditions.push(`text ILIKE $${paramIndex}`);
       params.push(`%${keywords}%`);
       paramIndex++;
     }
 
-    // Filter by user if provided
     if (userId) {
       conditions.push(`user_id = $${paramIndex}`);
       params.push(userId);
       paramIndex++;
     }
 
-    // Filter by posts with media if requested
     if (hasMedia === "true") {
       conditions.push("image IS NOT NULL");
     }
 
-    // Build the WHERE clause
     const whereClause =
       conditions.length > 0 ? "WHERE " + conditions.join(" AND ") : "";
 
-    // Count total posts matching the query
     const countQuery = `
       SELECT COUNT(*) FROM posts ${whereClause}
     `;
@@ -137,17 +120,14 @@ exports.searchPosts = async (req, res, next) => {
     const countResult = await pool.query(countQuery, params);
     const total = parseInt(countResult.rows[0].count);
 
-    // Get pagination info
     const { pagination, startIndex, limit } = getPaginationInfo(req, total);
 
-    // Determine sort field and direction
     let sortField = sortBy;
     if (sortBy === "likes") {
       sortField = "(SELECT COUNT(*) FROM post_likes WHERE post_id = posts.id)";
     }
     const direction = sortOrder === "desc" ? "DESC" : "ASC";
 
-    // Execute the query with pagination and sorting
     const postsQuery = `
       SELECT p.*, 
              u.username, u.profile_picture as "profilePicture",
@@ -162,10 +142,8 @@ exports.searchPosts = async (req, res, next) => {
     params.push(limit, startIndex);
     const postsResult = await pool.query(postsQuery, params);
 
-    // Get the posts
     const posts = postsResult.rows;
 
-    // Get comments for each post
     const postIds = posts.map((post) => post.id);
 
     let comments = [];
@@ -182,7 +160,6 @@ exports.searchPosts = async (req, res, next) => {
       comments = commentsResult.rows;
     }
 
-    // Organize comments by post
     const postComments = {};
     comments.forEach((comment) => {
       if (!postComments[comment.post_id]) {
@@ -191,7 +168,6 @@ exports.searchPosts = async (req, res, next) => {
       postComments[comment.post_id].push(comment);
     });
 
-    // Add comments to each post
     const postsWithComments = posts.map((post) => {
       return {
         ...post,
@@ -214,7 +190,6 @@ exports.searchPosts = async (req, res, next) => {
 // @access  Private
 exports.getTrendingTopics = async (req, res, next) => {
   try {
-    // Get posts from the last 24 hours
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
@@ -231,18 +206,14 @@ exports.getTrendingTopics = async (req, res, next) => {
     const result = await pool.query(query, [oneDayAgo]);
     const recentPosts = result.rows;
 
-    // Simple trend detection based on likes count and keywords
     const keywords = {};
 
     recentPosts.forEach((post) => {
-      // Extract words from the post text
       const words = post.text.toLowerCase().match(/\b\w+\b/g) || [];
 
-      // Count occurrences weighted by likes
-      const weight = parseInt(post.like_count) + 1; // +1 to count the post itself
+      const weight = parseInt(post.like_count) + 1;
 
       words.forEach((word) => {
-        // Filter out common words and short words
         if (word.length > 3) {
           if (!keywords[word]) {
             keywords[word] = 0;
@@ -252,11 +223,10 @@ exports.getTrendingTopics = async (req, res, next) => {
       });
     });
 
-    // Convert to array and sort by weight
     const trends = Object.entries(keywords)
       .map(([keyword, weight]) => ({ keyword, weight }))
       .sort((a, b) => b.weight - a.weight)
-      .slice(0, 10); // Get top 10
+      .slice(0, 10);
 
     res.status(200).json({
       success: true,

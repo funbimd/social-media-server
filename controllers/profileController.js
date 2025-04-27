@@ -1,4 +1,3 @@
-// controllers/profileController.js
 const { pool } = require("../config/db");
 const ErrorResponse = require("../utils/errorResponse");
 
@@ -7,7 +6,6 @@ const ErrorResponse = require("../utils/errorResponse");
 // @access  Private
 exports.getUserProfile = async (req, res, next) => {
   try {
-    // Get basic user info
     const userQuery = `
       SELECT id, username, email, profile_picture as "profilePicture", bio, created_at as "createdAt"
       FROM users
@@ -22,7 +20,6 @@ exports.getUserProfile = async (req, res, next) => {
 
     const user = userResult.rows[0];
 
-    // Get followers
     const followersQuery = `
       SELECT u.id, u.username, u.profile_picture as "profilePicture", u.bio
       FROM followers f
@@ -33,7 +30,6 @@ exports.getUserProfile = async (req, res, next) => {
     const followersResult = await pool.query(followersQuery, [req.params.id]);
     user.followers = followersResult.rows;
 
-    // Get following
     const followingQuery = `
       SELECT u.id, u.username, u.profile_picture as "profilePicture", u.bio
       FROM followers f
@@ -58,12 +54,10 @@ exports.getUserProfile = async (req, res, next) => {
 // @access  Private
 exports.followUser = async (req, res, next) => {
   try {
-    // Make sure user can't follow themselves
     if (req.params.id === req.user.id) {
       return next(new ErrorResponse("You cannot follow yourself", 400));
     }
 
-    // Check if target user exists
     const userQuery = "SELECT * FROM users WHERE id = $1";
     const userResult = await pool.query(userQuery, [req.params.id]);
 
@@ -71,7 +65,6 @@ exports.followUser = async (req, res, next) => {
       return next(new ErrorResponse("User not found", 404));
     }
 
-    // Check if already following
     const followCheckQuery = `
       SELECT * FROM followers
       WHERE follower_id = $1 AND following_id = $2
@@ -85,24 +78,22 @@ exports.followUser = async (req, res, next) => {
     const isFollowing = followCheckResult.rows.length > 0;
 
     if (isFollowing) {
-      // Unfollow
       await pool.query(
         "DELETE FROM followers WHERE follower_id = $1 AND following_id = $2",
         [req.user.id, req.params.id]
       );
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         data: { following: false },
       });
     } else {
-      // Follow
       await pool.query(
         "INSERT INTO followers (follower_id, following_id) VALUES ($1, $2)",
         [req.user.id, req.params.id]
       );
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         data: { following: true },
       });
@@ -117,17 +108,14 @@ exports.followUser = async (req, res, next) => {
 // @access  Private
 exports.getUserPosts = async (req, res, next) => {
   try {
-    // Pagination
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const startIndex = (page - 1) * limit;
 
-    // Get total count
     const countQuery = "SELECT COUNT(*) FROM posts WHERE user_id = $1";
     const countResult = await pool.query(countQuery, [req.params.id]);
     const total = parseInt(countResult.rows[0].count);
 
-    // Get posts
     const postsQuery = `
       SELECT p.*, 
         u.username, 
@@ -147,7 +135,6 @@ exports.getUserPosts = async (req, res, next) => {
     ]);
     const posts = postsResult.rows;
 
-    // Get comments
     const postIds = posts.map((post) => post.id);
     let comments = [];
 
@@ -166,7 +153,6 @@ exports.getUserPosts = async (req, res, next) => {
       comments = commentsResult.rows;
     }
 
-    // Assign comments to posts
     const postsWithComments = posts.map((post) => {
       const postComments = comments.filter(
         (comment) => comment.post_id === post.id
@@ -198,17 +184,14 @@ exports.getUserPosts = async (req, res, next) => {
 // @access  Private
 exports.getUserFollowers = async (req, res, next) => {
   try {
-    // Pagination
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const startIndex = (page - 1) * limit;
 
-    // Get total count
     const countQuery = "SELECT COUNT(*) FROM followers WHERE following_id = $1";
     const countResult = await pool.query(countQuery, [req.params.id]);
     const total = parseInt(countResult.rows[0].count);
 
-    // Get followers with pagination
     const followersQuery = `
       SELECT u.id, u.username, u.profile_picture as "profilePicture", u.bio
       FROM followers f
@@ -245,17 +228,14 @@ exports.getUserFollowers = async (req, res, next) => {
 // @access  Private
 exports.getUserFollowing = async (req, res, next) => {
   try {
-    // Pagination
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const startIndex = (page - 1) * limit;
 
-    // Get total count
     const countQuery = "SELECT COUNT(*) FROM followers WHERE follower_id = $1";
     const countResult = await pool.query(countQuery, [req.params.id]);
     const total = parseInt(countResult.rows[0].count);
 
-    // Get following with pagination
     const followingQuery = `
       SELECT u.id, u.username, u.profile_picture as "profilePicture", u.bio
       FROM followers f
@@ -300,7 +280,6 @@ exports.searchUsers = async (req, res, next) => {
       );
     }
 
-    // Search for users with similar usernames
     const usersQuery = `
       SELECT id, username, profile_picture as "profilePicture", bio
       FROM users
@@ -325,7 +304,6 @@ exports.searchUsers = async (req, res, next) => {
 // @access  Private
 exports.getSuggestedUsers = async (req, res, next) => {
   try {
-    // Get users that the current user doesn't follow
     const suggestedUsersQuery = `
       SELECT id, username, profile_picture as "profilePicture", bio
       FROM users

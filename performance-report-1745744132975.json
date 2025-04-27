@@ -1,0 +1,65 @@
+{
+  "timestamp": "2025-04-27T08:55:32.973Z",
+  "testConfig": {
+    "users": 5,
+    "postsPerUser": 10,
+    "commentsPerPost": 3,
+    "likesPerPost": 2
+  },
+  "totalCounts": {
+    "users": 5,
+    "posts": 50,
+    "likes": 50,
+    "comments": 75
+  },
+  "responseTimeStats": {
+    "registration": {
+      "min": 96,
+      "max": 283,
+      "avg": 137,
+      "median": 104
+    },
+    "login": {
+      "min": 93,
+      "max": 124,
+      "avg": 107,
+      "median": 99
+    },
+    "createPost": {
+      "min": 7,
+      "max": 18,
+      "avg": 9.3,
+      "median": 9
+    },
+    "getFeed": {
+      "min": 2,
+      "max": 4,
+      "avg": 2.8,
+      "median": 3
+    },
+    "getProfile": {
+      "min": 2,
+      "max": 3,
+      "avg": 2.8,
+      "median": 3
+    },
+    "search": {
+      "min": 3,
+      "max": 6,
+      "avg": 3.6,
+      "median": 3
+    },
+    "like": {
+      "min": 3,
+      "max": 19,
+      "avg": 8.2,
+      "median": 9
+    },
+    "comment": {
+      "min": 2,
+      "max": 5,
+      "avg": 3.0933333333333333,
+      "median": 3
+    }
+  }
+}

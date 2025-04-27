@@ -1,11 +1,9 @@
-// middleware/auth.js
 const jwt = require("jsonwebtoken");
 const { pool } = require("../config/db");
 
 exports.protect = async (req, res, next) => {
   let token;
 
-  // Check if auth header exists and has token
   if (
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer")
@@ -13,7 +11,6 @@ exports.protect = async (req, res, next) => {
     token = req.headers.authorization.split(" ")[1];
   }
 
-  // Make sure token exists
   if (!token) {
     return res.status(401).json({
       success: false,
@@ -22,10 +19,8 @@ exports.protect = async (req, res, next) => {
   }
 
   try {
-    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Add user to req object
     const result = await pool.query("SELECT * FROM users WHERE id = $1", [
       decoded.id,
     ]);

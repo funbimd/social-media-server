@@ -1,4 +1,3 @@
-// controllers/postController.js
 const { pool } = require("../config/db");
 const ErrorResponse = require("../utils/errorResponse");
 
@@ -34,7 +33,6 @@ exports.createPost = async (req, res, next) => {
 // @access  Private
 exports.getPosts = async (req, res, next) => {
   try {
-    // Get current user's following list
     const followingQuery = `
       SELECT following_id FROM followers
       WHERE follower_id = $1
@@ -42,10 +40,8 @@ exports.getPosts = async (req, res, next) => {
     const followingResult = await pool.query(followingQuery, [req.user.id]);
     const following = followingResult.rows.map((row) => row.following_id);
 
-    // Add current user's ID to include their posts
     following.push(req.user.id);
 
-    // Get posts from followed users
     let postsQuery = `
       SELECT p.*, 
         u.username, 
@@ -60,7 +56,6 @@ exports.getPosts = async (req, res, next) => {
     const postsResult = await pool.query(postsQuery, [following]);
     const posts = postsResult.rows;
 
-    // Get comments for these posts
     const postIds = posts.map((post) => post.id);
     let comments = [];
 
@@ -79,7 +74,6 @@ exports.getPosts = async (req, res, next) => {
       comments = commentsResult.rows;
     }
 
-    // Associate comments with their posts
     const postsWithComments = posts.map((post) => {
       const postComments = comments.filter(
         (comment) => comment.post_id === post.id
@@ -123,7 +117,6 @@ exports.getPost = async (req, res, next) => {
 
     const post = postResult.rows[0];
 
-    // Get the comments for this post
     const commentsQuery = `
       SELECT c.*, 
         u.username, 
@@ -151,7 +144,6 @@ exports.getPost = async (req, res, next) => {
 // @access  Private
 exports.updatePost = async (req, res, next) => {
   try {
-    // First check if post exists and user owns it
     const checkQuery = `
       SELECT user_id FROM posts WHERE id = $1
     `;
@@ -162,12 +154,10 @@ exports.updatePost = async (req, res, next) => {
       return next(new ErrorResponse("Post not found", 404));
     }
 
-    // Check ownership
     if (checkResult.rows[0].user_id !== req.user.id) {
       return next(new ErrorResponse("Not authorized to update this post", 401));
     }
 
-    // Update the post
     const { text, image } = req.body;
 
     const updateQuery = `
@@ -199,7 +189,6 @@ exports.updatePost = async (req, res, next) => {
 // @access  Private
 exports.deletePost = async (req, res, next) => {
   try {
-    // First check if post exists and user owns it
     const checkQuery = `
       SELECT user_id FROM posts WHERE id = $1
     `;
@@ -210,22 +199,18 @@ exports.deletePost = async (req, res, next) => {
       return next(new ErrorResponse("Post not found", 404));
     }
 
-    // Check ownership
     if (checkResult.rows[0].user_id !== req.user.id) {
       return next(new ErrorResponse("Not authorized to delete this post", 401));
     }
 
-    // Delete comments first (assuming you have cascade delete in your schema)
     await pool.query("DELETE FROM comments WHERE post_id = $1", [
       req.params.id,
     ]);
 
-    // Delete likes
     await pool.query("DELETE FROM post_likes WHERE post_id = $1", [
       req.params.id,
     ]);
 
-    // Delete the post
     await pool.query("DELETE FROM posts WHERE id = $1", [req.params.id]);
 
     res.status(200).json({
@@ -245,12 +230,10 @@ exports.likePost = async (req, res, next) => {
     const postId = req.params.id;
     const userId = req.user?.id;
 
-    // Check for missing or invalid UUIDs
     if (!postId || !userId) {
       return next(new ErrorResponse("Invalid post ID or user ID", 400));
     }
 
-    // Check if post exists
     const postQuery = "SELECT * FROM posts WHERE id = $1";
     const postResult = await pool.query(postQuery, [postId]);
 
@@ -258,7 +241,6 @@ exports.likePost = async (req, res, next) => {
       return next(new ErrorResponse("Post not found", 404));
     }
 
-    // Check if already liked
     const likeCheckQuery = `
       SELECT * FROM post_likes 
       WHERE post_id = $1 AND user_id = $2
@@ -267,20 +249,17 @@ exports.likePost = async (req, res, next) => {
     const isLiked = likeCheckResult.rows.length > 0;
 
     if (isLiked) {
-      // Unlike: Remove the like
       await pool.query(
         "DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2",
         [postId, userId]
       );
     } else {
-      // Like: Add a like
       await pool.query(
         "INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2)",
         [postId, userId]
       );
     }
 
-    // Get updated likes
     const likesQuery = `
       SELECT u.id, u.username 
       FROM post_likes pl
@@ -303,7 +282,6 @@ exports.likePost = async (req, res, next) => {
 // @access  Private
 exports.addComment = async (req, res, next) => {
   try {
-    // Check if post exists
     const postQuery = "SELECT * FROM posts WHERE id = $1";
     const postResult = await pool.query(postQuery, [req.params.id]);
 
@@ -311,7 +289,6 @@ exports.addComment = async (req, res, next) => {
       return next(new ErrorResponse("Post not found", 404));
     }
 
-    // Add the comment
     const { text } = req.body;
 
     const commentQuery = `
@@ -326,7 +303,6 @@ exports.addComment = async (req, res, next) => {
       req.params.id,
     ]);
 
-    // Get the inserted comment with user info
     const newCommentQuery = `
       SELECT c.*, 
         u.username, 
@@ -340,7 +316,6 @@ exports.addComment = async (req, res, next) => {
       commentResult.rows[0].id,
     ]);
 
-    // Get all comments for the post
     const allCommentsQuery = `
       SELECT c.*, 
         u.username, 
@@ -369,7 +344,6 @@ exports.addComment = async (req, res, next) => {
 // @access  Private
 exports.deleteComment = async (req, res, next) => {
   try {
-    // Check if post exists
     const postQuery = "SELECT * FROM posts WHERE id = $1";
     const postResult = await pool.query(postQuery, [req.params.id]);
 
@@ -377,7 +351,6 @@ exports.deleteComment = async (req, res, next) => {
       return next(new ErrorResponse("Post not found", 404));
     }
 
-    // Check if comment exists and user owns it
     const commentQuery = `
       SELECT * FROM comments 
       WHERE id = $1 AND post_id = $2
@@ -392,19 +365,16 @@ exports.deleteComment = async (req, res, next) => {
       return next(new ErrorResponse("Comment not found", 404));
     }
 
-    // Check ownership
     if (commentResult.rows[0].user_id !== req.user.id) {
       return next(
         new ErrorResponse("Not authorized to delete this comment", 401)
       );
     }
 
-    // Delete the comment
     await pool.query("DELETE FROM comments WHERE id = $1", [
       req.params.comment_id,
     ]);
 
-    // Get updated comments
     const updatedCommentsQuery = `
       SELECT c.*, 
         u.username, 
@@ -433,12 +403,10 @@ exports.deleteComment = async (req, res, next) => {
 // @access  Private
 exports.getFeedPosts = async (req, res, next) => {
   try {
-    // Pagination
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const startIndex = (page - 1) * limit;
 
-    // Get current user's following list
     const followingQuery = `
       SELECT following_id FROM followers
       WHERE follower_id = $1
@@ -446,10 +414,8 @@ exports.getFeedPosts = async (req, res, next) => {
     const followingResult = await pool.query(followingQuery, [req.user.id]);
     const following = followingResult.rows.map((row) => row.following_id);
 
-    // Add current user's ID to include their posts
     following.push(req.user.id);
 
-    // Get total count for pagination
     const totalQuery = `
       SELECT COUNT(*) FROM posts
       WHERE user_id = ANY($1::uuid[])
@@ -458,7 +424,6 @@ exports.getFeedPosts = async (req, res, next) => {
     const totalResult = await pool.query(totalQuery, [following]);
     const total = parseInt(totalResult.rows[0].count);
 
-    // Get posts with pagination
     const postsQuery = `
       SELECT p.*, 
         u.username, 
@@ -478,7 +443,6 @@ exports.getFeedPosts = async (req, res, next) => {
     ]);
     const posts = postsResult.rows;
 
-    // Get comments for these posts
     const postIds = posts.map((post) => post.id);
     let comments = [];
 
@@ -497,7 +461,6 @@ exports.getFeedPosts = async (req, res, next) => {
       comments = commentsResult.rows;
     }
 
-    // Associate comments with their posts
     const postsWithComments = posts.map((post) => {
       const postComments = comments.filter(
         (comment) => comment.post_id === post.id
@@ -529,12 +492,10 @@ exports.getFeedPosts = async (req, res, next) => {
 // @access  Private
 exports.getExplorePosts = async (req, res, next) => {
   try {
-    // Pagination
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 10;
     const startIndex = (page - 1) * limit;
 
-    // Get current user's following list
     const followingQuery = `
       SELECT following_id FROM followers
       WHERE follower_id = $1
@@ -542,10 +503,8 @@ exports.getExplorePosts = async (req, res, next) => {
     const followingResult = await pool.query(followingQuery, [req.user.id]);
     const following = followingResult.rows.map((row) => row.following_id);
 
-    // Add current user's ID
     following.push(req.user.id);
 
-    // Get total count for pagination
     const totalQuery = `
       SELECT COUNT(*) FROM posts
       WHERE user_id != ALL($1::uuid[])
@@ -554,7 +513,6 @@ exports.getExplorePosts = async (req, res, next) => {
     const totalResult = await pool.query(totalQuery, [following]);
     const total = parseInt(totalResult.rows[0].count);
 
-    // Get posts with pagination
     const postsQuery = `
       SELECT p.*, 
         u.username, 
@@ -576,7 +534,6 @@ exports.getExplorePosts = async (req, res, next) => {
     ]);
     const posts = postsResult.rows;
 
-    // Get comments for these posts
     const postIds = posts.map((post) => post.id);
     let comments = [];
 
@@ -595,7 +552,6 @@ exports.getExplorePosts = async (req, res, next) => {
       comments = commentsResult.rows;
     }
 
-    // Associate comments with their posts
     const postsWithComments = posts.map((post) => {
       const postComments = comments.filter(
         (comment) => comment.post_id === post.id

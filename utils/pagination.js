@@ -1,4 +1,3 @@
-// utils/pagination.js
 /**
  * Get pagination info for query results
  * @param {Object} req - Express request object
@@ -18,7 +17,6 @@ exports.getPaginationInfo = (req, total) => {
     pages: Math.ceil(total / limit),
   };
 
-  // Add next and prev page info if available
   if (endIndex < total) {
     pagination.next = {
       page: page + 1,
@@ -53,7 +51,6 @@ exports.paginateQuery = async (query, req, total) => {
     total
   );
 
-  // Apply pagination to query
   const paginatedQuery = query.skip(startIndex).limit(limit);
 
   return {
