@@ -1,0 +1,92 @@
+{
+  "timestamp": "2025-04-27T13:30:31.773Z",
+  "testConfig": {
+    "users": 5,
+    "postsPerUser": 10,
+    "commentsPerPost": 3,
+    "likesPerPost": 2,
+    "usersTestedForPasswordReset": 2
+  },
+  "totalCounts": {
+    "users": 5,
+    "posts": 50,
+    "likes": 50,
+    "comments": 75,
+    "passwordResets": 0,
+    "passwordChanges": 2
+  },
+  "responseTimeStats": {
+    "registration": {
+      "min": 75,
+      "max": 171,
+      "avg": 97.2,
+      "median": 80
+    },
+    "login": {
+      "min": 73,
+      "max": 80,
+      "avg": 76.8,
+      "median": 77
+    },
+    "createPost": {
+      "min": 4,
+      "max": 10,
+      "avg": 5.44,
+      "median": 5
+    },
+    "getFeed": {
+      "min": 2,
+      "max": 3,
+      "avg": 2.4,
+      "median": 2
+    },
+    "getProfile": {
+      "min": 1,
+      "max": 2,
+      "avg": 1.8,
+      "median": 2
+    },
+    "search": {
+      "min": 1,
+      "max": 3,
+      "avg": 2,
+      "median": 2
+    },
+    "like": {
+      "min": 1,
+      "max": 11,
+      "avg": 5.06,
+      "median": 5
+    },
+    "comment": {
+      "min": 1,
+      "max": 4,
+      "avg": 2.04,
+      "median": 2
+    },
+    "getMe": {
+      "min": 1,
+      "max": 3,
+      "avg": 2.2,
+      "median": 2
+    },
+    "forgotPassword": {
+      "min": 3,
+      "max": 4,
+      "avg": 3.5,
+      "median": 4
+    },
+    "resetPassword": {
+      "min": 0,
+      "max": 0,
+      "avg": 0,
+      "median": 0
+    },
+    "changePassword": {
+      "min": 2,
+      "max": 3,
+      "avg": 2.5,
+      "median": 3
+    }
+  }
+}

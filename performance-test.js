@@ -8,6 +8,7 @@ const TOTAL_USERS = 5;
 const POSTS_PER_USER = 10;
 const COMMENTS_PER_POST = 3;
 const LIKES_PER_POST = 2;
+const USERS_TO_TEST_PASSWORD_RESET = 2; // Number of users to test password reset functionality
 
 // Storage
 const users = [];
@@ -21,6 +22,10 @@ const results = {
   searchTimes: [],
   likeTimes: [],
   commentTimes: [],
+  forgotPasswordTimes: [],
+  resetPasswordTimes: [],
+  changePasswordTimes: [],
+  getMeTimes: [],
 };
 
 // Helper to measure response time
@@ -183,6 +188,154 @@ const testFeeds = async () => {
   console.log("Completed feed and profile tests");
 };
 
+// Test auth features - new function to test new auth features
+const testAuthFeatures = async () => {
+  console.log("Testing authentication features...");
+
+  // Test getMe endpoint for all users
+  for (const user of users) {
+    const getMeResult = await measureTime(() =>
+      axios.get(`${BASE_URL}/auth/me`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      })
+    );
+    results.getMeTimes.push(getMeResult.time);
+  }
+
+  // Test forgot password for some users
+  const usersToTest = users.slice(0, USERS_TO_TEST_PASSWORD_RESET);
+  console.log(`Testing password reset flow for ${usersToTest.length} users...`);
+
+  const resetTokens = []; // Array to store reset tokens
+
+  for (const user of usersToTest) {
+    // 1. Request password reset
+    console.log(`Requesting password reset for ${user.email}...`);
+    const forgotPasswordResult = await measureTime(() =>
+      axios.post(`${BASE_URL}/auth/forgot-password`, {
+        email: user.email,
+      })
+    );
+    results.forgotPasswordTimes.push(forgotPasswordResult.time);
+
+    // Debug output to check response
+    console.log(
+      "Forgot password response:",
+      JSON.stringify(forgotPasswordResult.data, null, 2)
+    );
+
+    // Store the reset token (in development mode, the API returns the token directly)
+    if (forgotPasswordResult.success && forgotPasswordResult.data.resetToken) {
+      const resetToken = forgotPasswordResult.data.resetToken;
+      resetTokens.push({
+        user,
+        resetToken,
+      });
+      console.log(
+        `Got reset token for ${user.email}: ${resetToken.substring(0, 5)}...`
+      );
+    } else {
+      console.log(`Failed to get reset token for ${user.email}`);
+    }
+  }
+
+  // Now test the reset password endpoint for each token
+  for (const { user, resetToken } of resetTokens) {
+    // 2. Reset password
+    console.log(`Resetting password for ${user.email}...`);
+    const newPassword = "NewPassword456!";
+    const resetPasswordResult = await measureTime(() =>
+      axios.put(`${BASE_URL}/auth/reset-password/${resetToken}`, {
+        password: newPassword,
+      })
+    );
+    results.resetPasswordTimes.push(resetPasswordResult.time);
+
+    // Debug output
+    if (resetPasswordResult.success) {
+      console.log(`Successfully reset password for ${user.email}`);
+    } else {
+      console.log(
+        `Failed to reset password for ${user.email}:`,
+        resetPasswordResult.error
+      );
+    }
+
+    // 3. Login with new password to verify
+    if (resetPasswordResult.success) {
+      console.log(`Verifying login with new password for ${user.email}...`);
+      const loginResult = await measureTime(() =>
+        axios.post(`${BASE_URL}/auth/login`, {
+          email: user.email,
+          password: newPassword,
+        })
+      );
+
+      if (loginResult.success) {
+        // Update token in our users array
+        user.token = loginResult.data.token;
+        user.password = newPassword;
+        console.log(
+          `Successfully logged in with new password for ${user.email}`
+        );
+      } else {
+        console.log(`Failed to login with new password for ${user.email}`);
+      }
+    }
+  }
+
+  // Test change password (when logged in)
+  console.log("Testing change password functionality...");
+  for (const user of users.slice(0, USERS_TO_TEST_PASSWORD_RESET)) {
+    const newerPassword = "YetAnotherPass789!";
+
+    console.log(`Changing password for ${user.email}...`);
+    const changePasswordResult = await measureTime(() =>
+      axios.put(
+        `${BASE_URL}/auth/change-password`,
+        {
+          currentPassword: user.password,
+          newPassword: newerPassword,
+        },
+        { headers: { Authorization: `Bearer ${user.token}` } }
+      )
+    );
+    results.changePasswordTimes.push(changePasswordResult.time);
+
+    if (changePasswordResult.success) {
+      console.log(`Successfully changed password for ${user.email}`);
+
+      // Verify by logging in again
+      console.log(`Verifying login after password change for ${user.email}...`);
+      const verifyLoginResult = await measureTime(() =>
+        axios.post(`${BASE_URL}/auth/login`, {
+          email: user.email,
+          password: newerPassword,
+        })
+      );
+
+      if (verifyLoginResult.success) {
+        user.password = newerPassword;
+        user.token = verifyLoginResult.data.token;
+        console.log(
+          `Successfully verified login after password change for ${user.email}`
+        );
+      } else {
+        console.log(
+          `Failed to verify login after password change for ${user.email}`
+        );
+      }
+    } else {
+      console.log(
+        `Failed to change password for ${user.email}:`,
+        changePasswordResult.error
+      );
+    }
+  }
+
+  console.log("Completed authentication features tests");
+};
+
 // Calculate statistics
 const calculateStats = (times) => {
   if (times.length === 0) return { min: 0, max: 0, avg: 0, median: 0 };
@@ -207,6 +360,10 @@ const generateReport = () => {
     search: calculateStats(results.searchTimes),
     like: calculateStats(results.likeTimes),
     comment: calculateStats(results.commentTimes),
+    getMe: calculateStats(results.getMeTimes),
+    forgotPassword: calculateStats(results.forgotPasswordTimes),
+    resetPassword: calculateStats(results.resetPasswordTimes),
+    changePassword: calculateStats(results.changePasswordTimes),
   };
 
   const report = {
@@ -216,12 +373,15 @@ const generateReport = () => {
       postsPerUser: POSTS_PER_USER,
       commentsPerPost: COMMENTS_PER_POST,
       likesPerPost: LIKES_PER_POST,
+      usersTestedForPasswordReset: USERS_TO_TEST_PASSWORD_RESET,
     },
     totalCounts: {
       users: users.length,
       posts: posts.length,
       likes: results.likeTimes.length,
       comments: results.commentTimes.length,
+      passwordResets: results.resetPasswordTimes.length,
+      passwordChanges: results.changePasswordTimes.length,
     },
     responseTimeStats: stats,
   };
@@ -237,10 +397,13 @@ const generateReport = () => {
   console.log(
     `Created ${report.totalCounts.users} users, ${report.totalCounts.posts} posts, ${report.totalCounts.comments} comments, and ${report.totalCounts.likes} likes`
   );
+  console.log(
+    `Performed ${report.totalCounts.passwordResets} password resets and ${report.totalCounts.passwordChanges} password changes`
+  );
 
   console.log("\nResponse Time Summary (in ms):");
   console.log("Operation\t\tMin\tMax\tAvg\tMedian");
-  console.log("-".repeat(60));
+  console.log("-".repeat(70));
 
   const printStats = (name, s) => {
     console.log(
@@ -258,6 +421,10 @@ const generateReport = () => {
   printStats("Search", stats.search);
   printStats("Like Post", stats.like);
   printStats("Add Comment", stats.comment);
+  printStats("Get Me", stats.getMe);
+  printStats("Forgot Password", stats.forgotPassword);
+  printStats("Reset Password", stats.resetPassword);
+  printStats("Change Password", stats.changePassword);
 
   // Calculate overall averages
   const allTimes = [
@@ -269,10 +436,14 @@ const generateReport = () => {
     ...results.searchTimes,
     ...results.likeTimes,
     ...results.commentTimes,
+    ...results.getMeTimes,
+    ...results.forgotPasswordTimes,
+    ...results.resetPasswordTimes,
+    ...results.changePasswordTimes,
   ];
 
   const overallStats = calculateStats(allTimes);
-  console.log("-".repeat(60));
+  console.log("-".repeat(70));
   printStats("OVERALL", overallStats);
   console.log("======================================\n");
 
@@ -298,6 +469,7 @@ const runPerformanceTest = async () => {
     await addLikes();
     await addComments();
     await testFeeds();
+    await testAuthFeatures(); // Test new auth features
 
     const report = generateReport();
     await cleanUp();
@@ -310,6 +482,7 @@ const runPerformanceTest = async () => {
     return report;
   } catch (error) {
     console.error("❌ Error running performance test:", error);
+    console.error(error.stack);
     // Still try to generate a report with the data we have
     generateReport();
     process.exit(1);
@@ -329,5 +502,6 @@ module.exports = {
   addLikes,
   addComments,
   testFeeds,
+  testAuthFeatures,
   generateReport,
 };

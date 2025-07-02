@@ -53,3 +53,11 @@ CREATE INDEX idx_comments_user_id ON comments(user_id);
 CREATE INDEX idx_likes_post_id ON likes(post_id);
 CREATE INDEX idx_followers_follower_id ON followers(follower_id);
 CREATE INDEX idx_followers_following_id ON followers(following_id);
+
+-- Add reset token and expiry columns to users table
+ALTER TABLE users
+ADD COLUMN reset_token VARCHAR(255),
+ADD COLUMN reset_token_expire TIMESTAMP;
+
+-- Add index for faster token lookups
+CREATE INDEX idx_users_reset_token ON users(reset_token);

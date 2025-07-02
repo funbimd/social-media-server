@@ -60,3 +60,20 @@ exports.searchValidation = [
     .trim()
     .escape(),
 ];
+
+exports.forgotPasswordValidation = [
+  check("email", "Please include a valid email").isEmail().normalizeEmail(),
+];
+
+exports.resetPasswordValidation = [
+  check("password", "Password must be at least 6 characters").isLength({
+    min: 6,
+  }),
+];
+
+exports.changePasswordValidation = [
+  check("currentPassword", "Current password is required").notEmpty(),
+  check("newPassword", "New password must be at least 6 characters").isLength({
+    min: 6,
+  }),
+];
